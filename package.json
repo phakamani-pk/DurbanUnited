@@ -9,24 +9,42 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "test": "node --test tests/*.test.mjs"
+    "test": "node --import tsx --test tests/*.test.ts tests/*.test.mjs",
+    "dev:api": "tsx watch server/index.ts",
+    "start:api": "tsx server/index.ts"
   },
   "dependencies": {
     "@fontsource/archivo": "^5.1.1",
     "@fontsource/space-grotesk": "^5.1.1",
+    "bcryptjs": "^3.0.3",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.6",
+    "dotenv": "^18.0.3",
+    "express": "^5.2.1",
+    "express-rate-limit": "^8.7.0",
     "framer-motion": "^13.2.0",
+    "helmet": "^8.3.0",
+    "jsonwebtoken": "^9.0.3",
     "lucide-react": "^0.468.0",
-    "next": "14.2.35",
-    "postcss": "8.5.24",
+    "next": "^15.5.24",
+    "pg": "^8.23.0",
+    "postcss": "^8.5.28",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@types/cookie-parser": "^1.4.10",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^20.17.10",
+    "@types/pg": "^8.23.1",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "eslint": "8.57.1",
     "eslint-config-next": "14.2.35",
+    "tsx": "^4.23.15",
     "typescript": "^5.7.2"
   }
 }

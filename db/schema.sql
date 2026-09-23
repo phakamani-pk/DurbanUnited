@@ -23,3 +23,15 @@ CREATE INDEX products_category_idx ON products (category) WHERE is_active = true
 CREATE INDEX orders_user_status_idx ON orders (user_id, status);
 CREATE INDEX notifications_unread_idx ON notifications (user_id) WHERE read_at IS NULL;
 INSERT INTO roles (name) VALUES ('fan'), ('editor'), ('admin') ON CONFLICT (name) DO NOTHING;
+
+-- Backend MVP additions.
+ALTER TABLE players ADD COLUMN IF NOT EXISTS slug VARCHAR(180);
+UPDATE players SET slug = lower(regexp_replace(trim(first_name || '-' || last_name), '[^a-zA-Z0-9]+', '-', 'g')) WHERE slug IS NULL;
+ALTER TABLE players ALTER COLUMN slug SET NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS players_slug_unique_idx ON players (slug);
+
+CREATE TABLE IF NOT EXISTS contact_subscriptions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  email CITEXT UNIQUE NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);

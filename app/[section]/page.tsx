@@ -16,8 +16,8 @@ const pages: Record<string, PageData> = {
 
 };
 export function generateStaticParams() { return Object.keys(pages).map(section => ({ section })); }
-export default function SectionPage({ params }: { params: { section: string } }) {
-  const { section } = params;
+export default async function SectionPage({ params }: { params: Promise<{ section: string }> }) {
+  const { section } = await params;
   const page = pages[section] ?? pages.news;
   return <main className="section-page"><header className="section-page-nav"><Link href="/" className="brand"><span className="crest">DU</span><span>DURBAN<br />UNITED</span></Link><Link href="/" className="back-link"><ArrowLeft size={15}/> Back to home</Link></header><section className="section-page-hero"><div className="eyebrow">{page.eyebrow}</div><h1>{page.title}</h1><p>{page.intro}</p></section><section className={`section-page-grid ${page.items.length === 2 ? 'two' : ''}`}>{page.items.map(item => <article className="section-page-card" key={item.label}>{item.image && <img src={item.image} alt="" />}{!item.image && <div className="page-card-icon">{section === 'contact' ? <MapPin size={22}/> : <Trophy size={22}/>}</div>}<div><span>{item.detail}</span><h2>{item.label}</h2><span className="page-card-link">Preview <ArrowUpRight size={14}/></span></div></article>)}</section>{section === 'contact' && <ContactForm/>}</main>;
 }

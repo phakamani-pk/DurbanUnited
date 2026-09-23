@@ -10,12 +10,12 @@ A production-shaped Next.js foundation for the Durban United public site, fan po
 4. Create a PostgreSQL database and run `psql "$env:DATABASE_URL" -f db/schema.sql`.
 5. Run `npm run dev` and open `http://localhost:3000`.
 
-The current slice includes the responsive public home experience, live nav state, matchday fixture cards, news, squad, store add-to-bag flow, fan hub entry, and floating fan assistant. The data and commerce boundaries are ready to be connected to Express route handlers and the schema in `db/schema.sql`.
+The current slice includes the responsive public experience plus a TypeScript Express backend with PostgreSQL persistence, supporter registration and login, public fixture/product/player/news feeds, and contact-update subscriptions. See `docs/BACKEND.md` for setup.
 
 ## Delivery architecture
 
 - **Web:** Next.js App Router, React, TypeScript, Tailwind-ready CSS surface, optimized route metadata.
-- **API:** Express service recommended under `server/`, with `helmet`, strict CORS allow-list, `express-rate-limit`, `zod` validation, parameterized `pg` queries, JWT in httpOnly secure cookies, and CSRF tokens for mutations.
+- **API:** Express service under `server/`, with `helmet`, strict CORS allow-list, `express-rate-limit`, `zod` validation, parameterized `pg` queries, JWT in httpOnly secure cookies, and CSRF tokens for mutations.
 - **Media:** Cloudinary signed uploads; never expose the API secret to the browser.
 - **Payments:** Stripe Checkout and PayFast ITN webhooks. Verify signatures, make webhook handlers idempotent, and persist payment state before fulfillment.
 - **Deployment:** Vercel for the Next app, Railway for Express and PostgreSQL. Keep secrets in platform secret stores and run migrations as a release step.
@@ -32,4 +32,4 @@ Run typecheck and production build in CI. Add Vitest unit tests, Supertest API i
 
 The static preview now includes responsive desktop/mobile navigation, current fixture presentation, squad profiles, store browsing, honest non-persistent auth/contact states, and explicit sample-data labelling for the admin UI. Run `npm test`, `npm run typecheck`, `npm run lint`, and `npm run build:pages` before review.
 
-The live API, authentication, payments, CMS persistence, uploads, and verified club contact/content data remain production dependencies and are intentionally not simulated in the preview.
+The first live API slice now implements authentication, public content feeds, and contact subscriptions. Payments, admin CMS mutations, uploads, verified club data, and production hosting remain the next delivery phases.
