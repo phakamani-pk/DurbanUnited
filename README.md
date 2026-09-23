@@ -27,3 +27,9 @@ Recommended versioned endpoints are documented in `docs/API.md`: auth, club cont
 ## Quality and security gates
 
 Run typecheck and production build in CI. Add Vitest unit tests, Supertest API integration tests, and Playwright smoke tests for auth, checkout, responsive nav, and admin authorization. Target 80%+ coverage. The API should reject unknown input, cap pagination, rate-limit auth and chat endpoints, sanitize rich text at render time, and log security events without secrets or payment data.
+
+## Client preview status — 23 September 2026
+
+The static preview now includes responsive desktop/mobile navigation, current fixture presentation, squad profiles, store browsing, honest non-persistent auth/contact states, and explicit sample-data labelling for the admin UI. Run `npm test`, `npm run typecheck`, `npm run lint`, and `npm run build:pages` before review.
+
+The live API, authentication, payments, CMS persistence, uploads, and verified club contact/content data remain production dependencies and are intentionally not simulated in the preview.
