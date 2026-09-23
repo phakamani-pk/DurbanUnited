@@ -11,7 +11,8 @@
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test tests/*.test.ts tests/*.test.mjs",
     "dev:api": "tsx watch server/index.ts",
-    "start:api": "tsx server/index.ts"
+    "start:api": "tsx server/index.ts",
+    "admin:promote": "tsx scripts/promote-admin.ts"
   },
   "dependencies": {
     "@fontsource/archivo": "^5.1.1",

@@ -60,3 +60,32 @@ export type ContactSubscription = {
   email: string;
   createdAt: string;
 };
+
+export type OrderStatus = 'pending' | 'paid' | 'processing' | 'shipped' | 'complete' | 'cancelled';
+
+export type OrderSummary = {
+  id: string;
+  status: OrderStatus;
+  totalCents: number;
+  createdAt: string;
+  customerName?: string;
+  customerEmail?: string;
+  itemCount: number;
+};
+
+export type Notification = {
+  id: string;
+  title: string;
+  body: string;
+  readAt: string | null;
+  createdAt: string;
+};
+
+export type AdminOverview = {
+  userCount: number;
+  orderCount: number;
+  pendingOrderCount: number;
+  productCount: number;
+  lowStockCount: number;
+  grossMerchandiseValueCents: number;
+};

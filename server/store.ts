@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { Pool } from 'pg';
-import type { ContactSubscription, Fixture, NewsItem, Player, Product, StoredUser } from './types';
+import type { AdminOverview, ContactSubscription, Fixture, NewsItem, Notification, OrderStatus, OrderSummary, Player, Product, StoredUser } from './types';
 
 export interface Store {
   findUserByEmail(email: string): Promise<StoredUser | null>;
@@ -11,6 +11,13 @@ export interface Store {
   listPlayers(): Promise<Player[]>;
   listNews(): Promise<NewsItem[]>;
   subscribe(email: string): Promise<ContactSubscription>;
+  listOrdersByUser(userId: string): Promise<OrderSummary[]>;
+  listNotificationsByUser(userId: string): Promise<Notification[]>;
+  getAdminOverview(): Promise<AdminOverview>;
+  listAdminUsers(): Promise<Omit<StoredUser, 'passwordHash'>[]>;
+  listAdminOrders(): Promise<OrderSummary[]>;
+  updateOrderStatus(id: string, status: OrderStatus): Promise<OrderSummary | null>;
+  updateProductStock(id: string, stock: number): Promise<Product | null>;
 }
 
 const fixtures: Fixture[] = [
@@ -38,7 +45,11 @@ const news: NewsItem[] = [
 
 export class MemoryStore implements Store {
   private users = new Map<string, StoredUser>();
+  private orders: OrderSummary[] = [];
+  private notifications = new Map<string, Notification[]>();
   private subscriptions = new Map<string, ContactSubscription>();
+
+  constructor(seedUsers: StoredUser[] = []) { for (const user of seedUsers) this.users.set(user.id, user); }
 
   async findUserByEmail(email: string) { return Array.from(this.users.values()).find(user => user.email === email.toLowerCase()) ?? null; }
   async findUserById(id: string) { return this.users.get(id) ?? null; }
@@ -52,6 +63,15 @@ export class MemoryStore implements Store {
   async listProducts() { return products; }
   async listPlayers() { return players; }
   async listNews() { return news; }
+  async listOrdersByUser(userId: string) { return this.orders.filter(order => order.id.startsWith(`${userId}:`)); }
+  async listNotificationsByUser(userId: string) { return this.notifications.get(userId) ?? []; }
+  async getAdminOverview() {
+    return { userCount: this.users.size, orderCount: this.orders.length, pendingOrderCount: this.orders.filter(order => order.status === 'pending').length, productCount: products.length, lowStockCount: products.filter(product => product.stock < 10).length, grossMerchandiseValueCents: this.orders.filter(order => !['pending', 'cancelled'].includes(order.status)).reduce((sum, order) => sum + order.totalCents, 0) };
+  }
+  async listAdminUsers() { return Array.from(this.users.values()).map(({ passwordHash: _passwordHash, ...user }) => user); }
+  async listAdminOrders() { return this.orders; }
+  async updateOrderStatus(id: string, status: OrderStatus) { const order = this.orders.find(item => item.id === id); if (!order) return null; order.status = status; return order; }
+  async updateProductStock(id: string, stock: number) { const product = products.find(item => item.id === id); if (!product) return null; product.stock = stock; return product; }
   async subscribe(email: string) {
     const normalized = email.toLowerCase();
     const existing = this.subscriptions.get(normalized);
@@ -98,6 +118,36 @@ export class PostgresStore implements Store {
     const result = await this.pool.query(`SELECT n.id, n.title, n.slug, COALESCE(n.excerpt, '') AS excerpt, COALESCE(c.name, 'Club News') AS category, COALESCE(n.cover_url, '') AS cover_url, n.published_at FROM news n LEFT JOIN categories c ON c.id = n.category_id WHERE n.published_at IS NOT NULL AND n.published_at <= now() ORDER BY n.published_at DESC LIMIT 50`);
     return result.rows.map(row => ({ id: row.id, title: row.title, slug: row.slug, excerpt: row.excerpt, category: row.category, coverUrl: row.cover_url, publishedAt: row.published_at.toISOString() }));
   }
+  async listOrdersByUser(userId: string) {
+    const result = await this.pool.query(`SELECT o.id, o.status, o.total_cents, o.created_at, count(oi.id)::int AS item_count FROM orders o LEFT JOIN order_items oi ON oi.order_id = o.id WHERE o.user_id = $1 GROUP BY o.id ORDER BY o.created_at DESC LIMIT 50`, [userId]);
+    return result.rows.map(mapOrder);
+  }
+  async listNotificationsByUser(userId: string) {
+    const result = await this.pool.query(`SELECT id, title, body, read_at, created_at FROM notifications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 50`, [userId]);
+    return result.rows.map(row => ({ id: row.id, title: row.title, body: row.body, readAt: row.read_at?.toISOString() ?? null, createdAt: row.created_at.toISOString() }));
+  }
+  async getAdminOverview() {
+    const result = await this.pool.query(`SELECT (SELECT count(*) FROM users WHERE is_active = true)::int AS user_count, (SELECT count(*) FROM orders)::int AS order_count, (SELECT count(*) FROM orders WHERE status = 'pending')::int AS pending_order_count, (SELECT count(*) FROM products WHERE is_active = true)::int AS product_count, (SELECT count(*) FROM products WHERE is_active = true AND stock < 10)::int AS low_stock_count, COALESCE((SELECT sum(total_cents) FROM orders WHERE status NOT IN ('pending','cancelled')), 0)::bigint AS gmv`);
+    const row = result.rows[0];
+    return { userCount: row.user_count, orderCount: row.order_count, pendingOrderCount: row.pending_order_count, productCount: row.product_count, lowStockCount: row.low_stock_count, grossMerchandiseValueCents: Number(row.gmv) };
+  }
+  async listAdminUsers() {
+    const result = await this.pool.query(`SELECT u.id, u.email, u.first_name, u.last_name, r.name AS role FROM users u JOIN roles r ON r.id = u.role_id WHERE u.is_active = true ORDER BY u.created_at DESC LIMIT 50`);
+    return result.rows.map(row => ({ id: row.id, email: row.email, firstName: row.first_name, lastName: row.last_name, role: row.role }));
+  }
+  async listAdminOrders() {
+    const result = await this.pool.query(`SELECT o.id, o.status, o.total_cents, o.created_at, u.first_name || ' ' || u.last_name AS customer_name, u.email AS customer_email, count(oi.id)::int AS item_count FROM orders o JOIN users u ON u.id = o.user_id LEFT JOIN order_items oi ON oi.order_id = o.id GROUP BY o.id, u.id ORDER BY o.created_at DESC LIMIT 50`);
+    return result.rows.map(mapOrder);
+  }
+  async updateOrderStatus(id: string, status: OrderStatus) {
+    const result = await this.pool.query(`UPDATE orders SET status = $2 WHERE id = $1 RETURNING id, status, total_cents, created_at, 0::int AS item_count`, [id, status]);
+    return result.rows[0] ? mapOrder(result.rows[0]) : null;
+  }
+  async updateProductStock(id: string, stock: number) {
+    const result = await this.pool.query(`UPDATE products SET stock = $2 WHERE id = $1 RETURNING id, name, slug, COALESCE(description, '') AS description, category, price_cents, stock, COALESCE(image_url, '') AS image_url`, [id, stock]);
+    const row = result.rows[0];
+    return row ? { id: row.id, name: row.name, slug: row.slug, description: row.description, category: row.category, priceCents: row.price_cents, stock: row.stock, imageUrl: row.image_url } : null;
+  }
   async subscribe(email: string) {
     const result = await this.pool.query(`INSERT INTO contact_subscriptions (email) VALUES ($1) ON CONFLICT (email) DO UPDATE SET email = EXCLUDED.email RETURNING id, email, created_at`, [email.toLowerCase()]);
     const row = result.rows[0];
@@ -108,3 +158,5 @@ export class PostgresStore implements Store {
 function mapUser(row: Record<string, string>): StoredUser {
   return { id: row.id, email: row.email, passwordHash: row.password_hash, firstName: row.first_name, lastName: row.last_name, role: row.role as StoredUser['role'] };
 }
+
+function mapOrder(row: Record<string, any>): OrderSummary { return { id: row.id, status: row.status, totalCents: Number(row.total_cents), createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at, customerName: row.customer_name, customerEmail: row.customer_email, itemCount: Number(row.item_count) }; }

@@ -16,12 +16,14 @@ test('match centre only lists future fixture as upcoming on 23 September 2026', 
   assert.doesNotMatch(fixtureBlock, /06 SEP 2026|20 SEP 2026/);
 });
 
-test('mobile navigation and honest static preview notices are present', async () => {
+test('mobile navigation and protected admin dashboard are present', async () => {
   const home = await readFile('app/page.tsx', 'utf8');
   const admin = await readFile('app/admin/page.tsx', 'utf8');
   assert.match(home, /Mobile navigation/);
   assert.match(home, /aria-expanded/);
-  assert.match(admin, /STATIC UI PREVIEW · SAMPLE DATA/);
+  assert.match(admin, /Administrator access only/);
+  assert.match(admin, /\/api\/v1\/admin\/overview/);
+  assert.doesNotMatch(admin, /STATIC UI PREVIEW · SAMPLE DATA/);
 });
 
 test('homepage CTAs use exported routes and reduced-motion reveals content', async () => {

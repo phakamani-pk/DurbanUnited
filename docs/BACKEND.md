@@ -29,3 +29,7 @@ Authentication uses a signed JWT in an httpOnly cookie. Production cookies are s
 ## Production configuration
 
 Set `NODE_ENV=production`, `DATA_MODE=postgres`, `DATABASE_URL`, `JWT_SECRET`, and `ALLOWED_ORIGINS` to the exact web origins. Run schema and seed SQL once as the release migration. Never commit environment files or secrets.
+
+## Role separation
+
+Fan accounts use `/api/v1/me/*`; administrator accounts use `/api/v1/admin/*`. Admin authorization is enforced by the API and never depends on hiding frontend routes. See `docs/DELIVERY-ARCHITECTURE.md`.

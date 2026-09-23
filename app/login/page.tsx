@@ -6,7 +6,7 @@ import { ArrowLeft, ArrowUpRight, Check, ShieldCheck } from 'lucide-react';
 import { apiRequest } from '../lib/api';
 
 type Mode = 'login' | 'register';
-type User = { firstName: string; email: string };
+type User = { firstName: string; email: string; role: 'fan' | 'editor' | 'admin' };
 
 export default function LoginPage() {
   const [mode, setMode] = useState<Mode>('login');
@@ -21,7 +21,9 @@ export default function LoginPage() {
     try {
       const body = mode === 'register' ? { email, password, firstName, lastName } : { email, password };
       const result = await apiRequest<User>(`/api/v1/auth/${mode}`, { method: 'POST', body: JSON.stringify(body) });
-      setMessage(`Welcome${mode === 'register' ? ' to United' : ' back'}, ${result.data.firstName}. You are signed in.`);
+      setMessage(`Welcome${mode === 'register' ? ' to United' : ' back'}, ${result.data.firstName}. Redirecting…`);
+      const destination = result.data.role === 'admin' ? '/admin/' : '/profile/';
+      window.location.assign(`${process.env.NEXT_PUBLIC_BASE_PATH ?? ''}${destination}`);
     } catch (error) { setMessage(error instanceof Error ? error.message : 'Sign-in failed.'); }
     finally { setBusy(false); }
   };

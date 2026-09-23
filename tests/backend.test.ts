@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
+import bcrypt from 'bcryptjs';
 import type { Server } from 'node:http';
 import { createApp } from '../server/app';
 import { MemoryStore } from '../server/store';
@@ -7,7 +8,8 @@ import { MemoryStore } from '../server/store';
 let server: Server;
 let baseUrl = '';
 before(async () => {
-  const app = createApp({ store: new MemoryStore(), jwtSecret: 'test-secret-that-is-long-enough-for-jwt', allowedOrigins: ['http://localhost:3000'] });
+  const passwordHash = await bcrypt.hash('admin-password', 4);
+  const app = createApp({ store: new MemoryStore([{ id: 'admin-1', email: 'admin@example.com', passwordHash, firstName: 'Club', lastName: 'Admin', role: 'admin' }]), jwtSecret: 'test-secret-that-is-long-enough-for-jwt', allowedOrigins: ['http://localhost:3000'] });
   await new Promise<void>((resolve, reject) => { server = app.listen(0, '127.0.0.1', error => error ? reject(error) : resolve()); });
   const address = server.address();
   if (!address || typeof address === 'string') throw new Error('Test server did not start');
@@ -44,4 +46,32 @@ test('contact subscriptions validate input and accept valid email', async () => 
   assert.equal(invalid.status, 400);
   const valid = await fetch(`${baseUrl}/api/v1/contact/subscriptions`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: 'supporter@example.com' }) });
   assert.equal(valid.status, 201);
+});
+
+
+test('fan sessions can access profile data but cannot access admin APIs', async () => {
+  const login = await fetch(`${baseUrl}/api/v1/auth/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: 'fan@example.com', password: 'strong-password' }) });
+  const cookie = login.headers.get('set-cookie')!.split(';')[0];
+  const orders = await fetch(`${baseUrl}/api/v1/me/orders`, { headers: { cookie } });
+  assert.equal(orders.status, 200);
+  const admin = await fetch(`${baseUrl}/api/v1/admin/overview`, { headers: { cookie } });
+  assert.equal(admin.status, 403);
+  assert.equal((await admin.json()).error.code, 'FORBIDDEN');
+});
+
+test('admin sessions access management APIs', async () => {
+  const login = await fetch(`${baseUrl}/api/v1/auth/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: 'admin@example.com', password: 'admin-password' }) });
+  assert.equal(login.status, 200);
+  assert.equal((await login.clone().json()).data.role, 'admin');
+  const cookie = login.headers.get('set-cookie')!.split(';')[0];
+  const overview = await fetch(`${baseUrl}/api/v1/admin/overview`, { headers: { cookie } });
+  assert.equal(overview.status, 200);
+  assert.equal((await overview.json()).data.userCount, 2);
+});
+
+test('anonymous requests cannot access private profile or admin APIs', async () => {
+  const profile = await fetch(`${baseUrl}/api/v1/me/orders`);
+  const admin = await fetch(`${baseUrl}/api/v1/admin/users`);
+  assert.equal(profile.status, 401);
+  assert.equal(admin.status, 401);
 });
