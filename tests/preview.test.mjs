@@ -2,10 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
-test('preview contains no embedded admin password or fake authenticated session', async () => {
+test('authentication contains no embedded admin password or browser-stored fake session', async () => {
   const login = await readFile('app/login/page.tsx', 'utf8');
   assert.doesNotMatch(login, /ADMIN_PASSWORD|du-admin-session|localStorage/);
-  assert.match(login, /No details were submitted or stored/);
+  assert.match(login, /apiRequest<User>/);
+  assert.match(login, /credentials are never stored|secure cookie|session uses a secure cookie/i);
 });
 
 test('match centre only lists future fixture as upcoming on 23 September 2026', async () => {
