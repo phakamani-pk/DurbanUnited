@@ -75,3 +75,15 @@ test('anonymous requests cannot access private profile or admin APIs', async () 
   assert.equal(profile.status, 401);
   assert.equal(admin.status, 401);
 });
+
+test('admin can manage every configured content resource', async () => {
+  const login = await fetch(`${baseUrl}/api/v1/auth/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: 'admin@example.com', password: 'admin-password' }) });
+  const cookie = login.headers.get('set-cookie')!.split(';')[0];
+  for (const resource of ['teams','players','news','fixtures','standings','products','gallery','sponsors']) {
+    const response = await fetch(`${baseUrl}/api/v1/admin/resources/${resource}`, { headers: { cookie } });
+    assert.equal(response.status, 200, resource);
+  }
+  const create = await fetch(`${baseUrl}/api/v1/admin/resources/sponsors`, { method: 'POST', headers: { cookie, 'content-type': 'application/json' }, body: JSON.stringify({ name: 'Test Sponsor', logoUrl: 'https://example.com/logo.png', websiteUrl: 'https://example.com', tier: 'Official', sortOrder: 1, isActive: true }) });
+  assert.equal(create.status, 201);
+  assert.equal((await create.json()).data.name, 'Test Sponsor');
+});

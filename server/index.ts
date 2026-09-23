@@ -13,5 +13,6 @@ const store = dataMode === 'postgres'
   : new MemoryStore();
 
 const allowedOrigins = (process.env.ALLOWED_ORIGINS ?? process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000').split(',').map(value => value.trim()).filter(Boolean);
-const app = createApp({ store, jwtSecret, allowedOrigins, secureCookies: process.env.NODE_ENV === 'production' });
+const bootstrapAdmin = process.env.ADMIN_EMAIL && process.env.ADMIN_PASSWORD ? { email: process.env.ADMIN_EMAIL, password: process.env.ADMIN_PASSWORD, firstName: process.env.ADMIN_FIRST_NAME ?? 'Club', lastName: process.env.ADMIN_LAST_NAME ?? 'Administrator' } : undefined;
+const app = createApp({ store, jwtSecret, allowedOrigins, secureCookies: process.env.NODE_ENV === 'production', bootstrapAdmin });
 app.listen(port, () => console.log(`Durban United API listening on port ${port} (${dataMode})`));

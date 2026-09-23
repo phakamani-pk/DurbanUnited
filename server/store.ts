@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { Pool } from 'pg';
-import type { AdminOverview, ContactSubscription, Fixture, NewsItem, Notification, OrderStatus, OrderSummary, Player, Product, StoredUser } from './types';
+import type { AdminOverview, AdminRecord, AdminResource, ContactSubscription, Fixture, NewsItem, Notification, OrderStatus, OrderSummary, Player, Product, StoredUser } from './types';
 
 export interface Store {
   findUserByEmail(email: string): Promise<StoredUser | null>;
@@ -18,6 +18,13 @@ export interface Store {
   listAdminOrders(): Promise<OrderSummary[]>;
   updateOrderStatus(id: string, status: OrderStatus): Promise<OrderSummary | null>;
   updateProductStock(id: string, stock: number): Promise<Product | null>;
+  listAdminResource(resource: AdminResource): Promise<AdminRecord[]>;
+  createAdminResource(resource: AdminResource, input: Record<string, unknown>, actorId: string): Promise<AdminRecord>;
+  updateAdminResource(resource: AdminResource, id: string, input: Record<string, unknown>, actorId: string): Promise<AdminRecord | null>;
+  deleteAdminResource(resource: AdminResource, id: string): Promise<boolean>;
+  updateUserAccess(id: string, role: 'fan' | 'admin', isActive: boolean): Promise<Omit<StoredUser, 'passwordHash'> | null>;
+  createNotification(userId: string, title: string, body: string): Promise<Notification>;
+  ensureAdmin(email: string, passwordHash: string, firstName: string, lastName: string): Promise<void>;
 }
 
 const fixtures: Fixture[] = [
@@ -72,6 +79,19 @@ export class MemoryStore implements Store {
   async listAdminOrders() { return this.orders; }
   async updateOrderStatus(id: string, status: OrderStatus) { const order = this.orders.find(item => item.id === id); if (!order) return null; order.status = status; return order; }
   async updateProductStock(id: string, stock: number) { const product = products.find(item => item.id === id); if (!product) return null; product.stock = stock; return product; }
+  async listAdminResource(resource: AdminResource) {
+    if (resource === 'players') return players as unknown as AdminRecord[];
+    if (resource === 'news') return news as unknown as AdminRecord[];
+    if (resource === 'fixtures') return fixtures as unknown as AdminRecord[];
+    if (resource === 'products') return products as unknown as AdminRecord[];
+    return [];
+  }
+  async createAdminResource(_resource: AdminResource, input: Record<string, unknown>) { return { id: randomUUID(), ...input } as AdminRecord; }
+  async updateAdminResource(_resource: AdminResource, id: string, input: Record<string, unknown>) { return { id, ...input } as AdminRecord; }
+  async deleteAdminResource() { return true; }
+  async updateUserAccess(id: string, role: 'fan' | 'admin', isActive: boolean) { const user = this.users.get(id); if (!user || !isActive) return null; user.role = role; const { passwordHash: _passwordHash, ...publicRecord } = user; return publicRecord; }
+  async createNotification(userId: string, title: string, body: string) { const item = { id: randomUUID(), title, body, readAt: null, createdAt: new Date().toISOString() }; this.notifications.set(userId, [item, ...(this.notifications.get(userId) ?? [])]); return item; }
+  async ensureAdmin(email: string, passwordHash: string, firstName: string, lastName: string) { const existing = await this.findUserByEmail(email); if (existing) { existing.role = 'admin'; existing.passwordHash = passwordHash; return; } const user: StoredUser = { id: randomUUID(), email: email.toLowerCase(), passwordHash, firstName, lastName, role: 'admin' }; this.users.set(user.id, user); }
   async subscribe(email: string) {
     const normalized = email.toLowerCase();
     const existing = this.subscriptions.get(normalized);
@@ -148,6 +168,28 @@ export class PostgresStore implements Store {
     const row = result.rows[0];
     return row ? { id: row.id, name: row.name, slug: row.slug, description: row.description, category: row.category, priceCents: row.price_cents, stock: row.stock, imageUrl: row.image_url } : null;
   }
+  async listAdminResource(resource: AdminResource) { return this.queryAdminResource(resource); }
+  async createAdminResource(resource: AdminResource, input: Record<string, unknown>, actorId: string) {
+    const spec = adminSql(resource, input, actorId);
+    const result = await this.pool.query(spec.insert, spec.values);
+    return mapAdminRecord(result.rows[0]);
+  }
+  async updateAdminResource(resource: AdminResource, id: string, input: Record<string, unknown>, actorId: string) {
+    const spec = adminSql(resource, input, actorId);
+    const assignments = spec.columns.map((column, index) => `${column} = $${index + 2}`).join(', ');
+    const result = await this.pool.query(`UPDATE ${resource} SET ${assignments}${resource === 'news' ? ', updated_at = now()' : resource === 'standings' ? ', updated_at = now()' : ''} WHERE id = $1 RETURNING *`, [id, ...spec.values]);
+    return result.rows[0] ? mapAdminRecord(result.rows[0]) : null;
+  }
+  async deleteAdminResource(resource: AdminResource, id: string) { const result = await this.pool.query(`DELETE FROM ${resource} WHERE id = $1`, [id]); return Boolean(result.rowCount); }
+  async updateUserAccess(id: string, role: 'fan' | 'admin', isActive: boolean) {
+    const result = await this.pool.query(`UPDATE users SET role_id = (SELECT id FROM roles WHERE name = $2), is_active = $3, updated_at = now() WHERE id = $1 RETURNING id, email, first_name, last_name`, [id, role, isActive]);
+    return result.rows[0] ? { id: result.rows[0].id, email: result.rows[0].email, firstName: result.rows[0].first_name, lastName: result.rows[0].last_name, role } : null;
+  }
+  async createNotification(userId: string, title: string, body: string) { const result = await this.pool.query(`INSERT INTO notifications (user_id, title, body) VALUES ($1, $2, $3) RETURNING id, title, body, read_at, created_at`, [userId, title, body]); const row = result.rows[0]; return { id: row.id, title: row.title, body: row.body, readAt: null, createdAt: row.created_at.toISOString() }; }
+  async ensureAdmin(email: string, passwordHash: string, firstName: string, lastName: string) {
+    await this.pool.query(`INSERT INTO users (role_id, email, password_hash, first_name, last_name) SELECT id, $1, $2, $3, $4 FROM roles WHERE name = 'admin' ON CONFLICT (email) DO UPDATE SET role_id = (SELECT id FROM roles WHERE name = 'admin'), password_hash = EXCLUDED.password_hash, first_name = EXCLUDED.first_name, last_name = EXCLUDED.last_name, is_active = true, updated_at = now()`, [email.toLowerCase(), passwordHash, firstName, lastName]);
+  }
+  private async queryAdminResource(resource: AdminResource) { const result = await this.pool.query(adminSelect(resource)); return result.rows.map(mapAdminRecord); }
   async subscribe(email: string) {
     const result = await this.pool.query(`INSERT INTO contact_subscriptions (email) VALUES ($1) ON CONFLICT (email) DO UPDATE SET email = EXCLUDED.email RETURNING id, email, created_at`, [email.toLowerCase()]);
     const row = result.rows[0];
@@ -160,3 +202,37 @@ function mapUser(row: Record<string, string>): StoredUser {
 }
 
 function mapOrder(row: Record<string, any>): OrderSummary { return { id: row.id, status: row.status, totalCents: Number(row.total_cents), createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at, customerName: row.customer_name, customerEmail: row.customer_email, itemCount: Number(row.item_count) }; }
+
+function adminSelect(resource: AdminResource) {
+  const selects: Record<AdminResource, string> = {
+    teams: `SELECT id, name, short_name, COALESCE(logo_url, '') AS logo_url FROM teams ORDER BY name`,
+    players: `SELECT id, team_id, first_name, last_name, slug, jersey_number, position, COALESCE(nationality, '') AS nationality, COALESCE(bio, '') AS bio, COALESCE(photo_url, '') AS photo_url, is_active FROM players ORDER BY jersey_number NULLS LAST`,
+    news: `SELECT id, title, slug, COALESCE(excerpt, '') AS excerpt, body, COALESCE(cover_url, '') AS cover_url, published_at FROM news ORDER BY created_at DESC`,
+    fixtures: `SELECT id, home_team_id, away_team_id, competition, COALESCE(venue, '') AS venue, kickoff_at, status, home_score, away_score FROM fixtures ORDER BY kickoff_at DESC`,
+    standings: `SELECT id, team_id, competition, season, position, played, won, drawn, lost, goals_for, goals_against, points FROM standings ORDER BY position`,
+    products: `SELECT id, name, slug, COALESCE(description, '') AS description, category, price_cents, stock, COALESCE(image_url, '') AS image_url, is_active FROM products ORDER BY created_at DESC`,
+    gallery: `SELECT id, title, media_type, media_url, COALESCE(thumbnail_url, '') AS thumbnail_url, published_at FROM gallery ORDER BY created_at DESC`,
+    sponsors: `SELECT id, name, logo_url, COALESCE(website_url, '') AS website_url, COALESCE(tier, '') AS tier, sort_order, is_active FROM sponsors ORDER BY sort_order, name`
+  }; return selects[resource];
+}
+function adminSql(resource: AdminResource, input: Record<string, unknown>, actorId: string) {
+  const definitions: Record<AdminResource, { columns: string[]; keys: string[] }> = {
+    teams: { columns: ['name','short_name','logo_url'], keys: ['name','shortName','logoUrl'] },
+    players: { columns: ['team_id','first_name','last_name','slug','jersey_number','position','nationality','bio','photo_url','is_active'], keys: ['teamId','firstName','lastName','slug','jerseyNumber','position','nationality','bio','photoUrl','isActive'] },
+    news: { columns: ['author_id','title','slug','excerpt','body','cover_url','published_at'], keys: ['authorId','title','slug','excerpt','body','coverUrl','publishedAt'] },
+    fixtures: { columns: ['home_team_id','away_team_id','competition','venue','kickoff_at','status','home_score','away_score'], keys: ['homeTeamId','awayTeamId','competition','venue','kickoffAt','status','homeScore','awayScore'] },
+    standings: { columns: ['team_id','competition','season','position','played','won','drawn','lost','goals_for','goals_against','points'], keys: ['teamId','competition','season','position','played','won','drawn','lost','goalsFor','goalsAgainst','points'] },
+    products: { columns: ['name','slug','description','category','price_cents','stock','image_url','is_active'], keys: ['name','slug','description','category','priceCents','stock','imageUrl','isActive'] },
+    gallery: { columns: ['title','media_type','media_url','thumbnail_url','published_at'], keys: ['title','mediaType','mediaUrl','thumbnailUrl','publishedAt'] },
+    sponsors: { columns: ['name','logo_url','website_url','tier','sort_order','is_active'], keys: ['name','logoUrl','websiteUrl','tier','sortOrder','isActive'] }
+  };
+  const definition = definitions[resource]; const source: Record<string, unknown> = { ...input, authorId: actorId };
+  const values = definition.keys.map(key => source[key] === '' ? null : source[key]);
+  const placeholders = definition.columns.map((_, index) => `$${index + 1}`).join(', ');
+  return { columns: definition.columns, values, insert: `INSERT INTO ${resource} (${definition.columns.join(', ')}) VALUES (${placeholders}) RETURNING *` };
+}
+function mapAdminRecord(row: Record<string, any>): AdminRecord {
+  const result: Record<string, string | number | boolean | null> = {};
+  for (const [key, value] of Object.entries(row)) { const camel = key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase()); result[camel] = value instanceof Date ? value.toISOString() : value; }
+  return result as AdminRecord;
+}
