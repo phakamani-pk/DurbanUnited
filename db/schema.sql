@@ -35,3 +35,22 @@ CREATE TABLE IF NOT EXISTS contact_subscriptions (
   email CITEXT UNIQUE NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- League table rows managed by administrators.
+CREATE TABLE IF NOT EXISTS standings (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  team_id UUID NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+  competition VARCHAR(100) NOT NULL DEFAULT 'Betway Premiership',
+  season VARCHAR(20) NOT NULL DEFAULT '2026/27',
+  position SMALLINT NOT NULL CHECK (position > 0),
+  played SMALLINT NOT NULL DEFAULT 0 CHECK (played >= 0),
+  won SMALLINT NOT NULL DEFAULT 0 CHECK (won >= 0),
+  drawn SMALLINT NOT NULL DEFAULT 0 CHECK (drawn >= 0),
+  lost SMALLINT NOT NULL DEFAULT 0 CHECK (lost >= 0),
+  goals_for SMALLINT NOT NULL DEFAULT 0 CHECK (goals_for >= 0),
+  goals_against SMALLINT NOT NULL DEFAULT 0 CHECK (goals_against >= 0),
+  points SMALLINT NOT NULL DEFAULT 0 CHECK (points >= 0),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (team_id, competition, season)
+);
+CREATE INDEX IF NOT EXISTS standings_lookup_idx ON standings (competition, season, position);

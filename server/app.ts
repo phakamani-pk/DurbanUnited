@@ -7,13 +7,14 @@ import jwt from 'jsonwebtoken';
 import { rateLimit } from 'express-rate-limit';
 import { z } from 'zod';
 import type { Store } from './store';
-import type { OrderStatus, PublicUser } from './types';
+import type { AdminResource, OrderStatus, PublicUser } from './types';
 
 type AppOptions = {
   store: Store;
   jwtSecret: string;
   allowedOrigins: string[];
   secureCookies?: boolean;
+  bootstrapAdmin?: { email: string; password: string; firstName: string; lastName: string };
 };
 
 type AuthRequest = Request & { user?: PublicUser };
@@ -23,9 +24,14 @@ const registerSchema = credentialsSchema.extend({ firstName: z.string().trim().m
 const contactSchema = z.object({ email: z.string().email().max(254) });
 const orderStatusSchema = z.object({ status: z.enum(['pending', 'paid', 'processing', 'shipped', 'complete', 'cancelled']) });
 const stockSchema = z.object({ stock: z.number().int().min(0).max(100000) });
+const resourceSchema = z.enum(['teams','players','news','fixtures','standings','products','gallery','sponsors']);
+const adminRecordSchema = z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()])).refine(value => Object.keys(value).length > 0, 'At least one field is required.');
+const accessSchema = z.object({ role: z.enum(['fan','admin']), isActive: z.boolean() });
+const notificationSchema = z.object({ title: z.string().trim().min(1).max(160), body: z.string().trim().min(1).max(2000) });
 
-export function createApp({ store, jwtSecret, allowedOrigins, secureCookies = false }: AppOptions) {
+export function createApp({ store, jwtSecret, allowedOrigins, secureCookies = false, bootstrapAdmin }: AppOptions) {
   const app = express();
+  if (bootstrapAdmin) void bcrypt.hash(bootstrapAdmin.password, 12).then(passwordHash => store.ensureAdmin(bootstrapAdmin.email, passwordHash, bootstrapAdmin.firstName, bootstrapAdmin.lastName));
   app.disable('x-powered-by');
   app.use(helmet());
   app.use(cors({ credentials: true, origin(origin, callback) {
@@ -120,6 +126,36 @@ export function createApp({ store, jwtSecret, allowedOrigins, secureCookies = fa
     const product = await store.updateProductStock(String(request.params.id), stock);
     if (!product) return response.status(404).json(errorBody('PRODUCT_NOT_FOUND', 'Product not found.'));
     response.json({ data: product });
+  }));
+
+  app.get('/api/v1/admin/resources/:resource', authenticate, requireAdmin, asyncHandler(async (request, response) => {
+    const resource = resourceSchema.parse(request.params.resource) as AdminResource;
+    response.json({ data: await store.listAdminResource(resource) });
+  }));
+  app.post('/api/v1/admin/resources/:resource', authenticate, requireAdmin, asyncHandler(async (request: AuthRequest, response) => {
+    const resource = resourceSchema.parse(request.params.resource) as AdminResource;
+    response.status(201).json({ data: await store.createAdminResource(resource, adminRecordSchema.parse(request.body), request.user!.id) });
+  }));
+  app.patch('/api/v1/admin/resources/:resource/:id', authenticate, requireAdmin, asyncHandler(async (request: AuthRequest, response) => {
+    const resource = resourceSchema.parse(request.params.resource) as AdminResource;
+    const record = await store.updateAdminResource(resource, String(request.params.id), adminRecordSchema.parse(request.body), request.user!.id);
+    if (!record) return response.status(404).json(errorBody('RECORD_NOT_FOUND', 'Record not found.'));
+    response.json({ data: record });
+  }));
+  app.delete('/api/v1/admin/resources/:resource/:id', authenticate, requireAdmin, asyncHandler(async (request, response) => {
+    const resource = resourceSchema.parse(request.params.resource) as AdminResource;
+    if (!(await store.deleteAdminResource(resource, String(request.params.id)))) return response.status(404).json(errorBody('RECORD_NOT_FOUND', 'Record not found.'));
+    response.status(204).end();
+  }));
+  app.patch('/api/v1/admin/users/:id/access', authenticate, requireAdmin, asyncHandler(async (request, response) => {
+    const input = accessSchema.parse(request.body);
+    const user = await store.updateUserAccess(String(request.params.id), input.role, input.isActive);
+    if (!user) return response.status(404).json(errorBody('USER_NOT_FOUND', 'User not found.'));
+    response.json({ data: user });
+  }));
+  app.post('/api/v1/admin/users/:id/notifications', authenticate, requireAdmin, asyncHandler(async (request, response) => {
+    const input = notificationSchema.parse(request.body);
+    response.status(201).json({ data: await store.createNotification(String(request.params.id), input.title, input.body) });
   }));
 
   app.use((_request, response) => response.status(404).json(errorBody('NOT_FOUND', 'Route not found.')));

@@ -89,3 +89,6 @@ export type AdminOverview = {
   lowStockCount: number;
   grossMerchandiseValueCents: number;
 };
+
+export type AdminResource = 'teams' | 'players' | 'news' | 'fixtures' | 'standings' | 'products' | 'gallery' | 'sponsors';
+export type AdminRecord = Record<string, string | number | boolean | null> & { id: string };

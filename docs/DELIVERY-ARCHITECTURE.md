@@ -58,3 +58,9 @@ Next business modules:
 - Admin CRUD for fixtures, players, news and media.
 - Notification creation and delivery channels.
 - Object storage for uploads, audit logs, password reset and email verification.
+
+## Temporary bootstrap administrator
+
+The API can seed or reset one administrator from backend runtime variables: `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADMIN_FIRST_NAME`, and `ADMIN_LAST_NAME`. The raw password is never written to source control or stored in PostgreSQL; startup hashes it with bcrypt and stores only the hash. Remove `ADMIN_PASSWORD` from the hosting environment after first successful bootstrap if automatic reset on every restart is not required.
+
+The completed dashboard manages teams, players, news, fixtures/results, standings, products and stock, orders, users and profile communications, gallery items, and sponsors. Every mutation is protected by the server-side admin role check.
