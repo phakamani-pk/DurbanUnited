@@ -5,3 +5,9 @@ out/
 .env
 .env.local
 .DS_Store
+
+# Local test output
+coverage/
+
+# TypeScript incremental cache
+*.tsbuildinfo
