@@ -16,10 +16,31 @@ test('match centre only lists future fixture as upcoming on 23 September 2026', 
   assert.doesNotMatch(fixtureBlock, /06 SEP 2026|20 SEP 2026/);
 });
 
-test('mobile navigation and honest static preview notices are present', async () => {
+test('mobile navigation and protected admin dashboard are present', async () => {
   const home = await readFile('app/page.tsx', 'utf8');
   const admin = await readFile('app/admin/page.tsx', 'utf8');
   assert.match(home, /Mobile navigation/);
   assert.match(home, /aria-expanded/);
-  assert.match(admin, /STATIC UI PREVIEW · SAMPLE DATA/);
+  assert.match(admin, /Administrator access only/);
+  assert.match(admin, /\/api\/v1\/admin\/overview/);
+  assert.doesNotMatch(admin, /STATIC UI PREVIEW · SAMPLE DATA/);
+});
+
+test('homepage CTAs use exported routes and reduced-motion reveals content', async () => {
+  const home = await readFile('app/page.tsx', 'utf8');
+  const navigation = await readFile('app/navigation.css', 'utf8');
+  for (const route of ['/match-centre', '/club-history', '/news', '/squad', '/shop', '/login']) {
+    assert.match(home, new RegExp(`href=["']${route}["']`));
+  }
+  assert.match(home, /useReducedMotion/);
+  assert.match(navigation, /prefers-reduced-motion:reduce/);
+  assert.match(navigation, /opacity:1!important/);
+});
+
+test('mobile menu contains focus, supports Escape and hides background content', async () => {
+  const home = await readFile('app/page.tsx', 'utf8');
+  assert.match(home, /event\.key === 'Escape'/);
+  assert.match(home, /aria-modal="true"/);
+  assert.match(home, /inert=\{menuOpen/);
+  assert.match(home, /last\.focus\(\)/);
 });

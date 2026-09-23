@@ -7,7 +7,7 @@ import jwt from 'jsonwebtoken';
 import { rateLimit } from 'express-rate-limit';
 import { z } from 'zod';
 import type { Store } from './store';
-import type { PublicUser } from './types';
+import type { OrderStatus, PublicUser } from './types';
 
 type AppOptions = {
   store: Store;
@@ -21,6 +21,8 @@ type AuthRequest = Request & { user?: PublicUser };
 const credentialsSchema = z.object({ email: z.string().email().max(254), password: z.string().min(8).max(128) });
 const registerSchema = credentialsSchema.extend({ firstName: z.string().trim().min(1).max(80), lastName: z.string().trim().min(1).max(80) });
 const contactSchema = z.object({ email: z.string().email().max(254) });
+const orderStatusSchema = z.object({ status: z.enum(['pending', 'paid', 'processing', 'shipped', 'complete', 'cancelled']) });
+const stockSchema = z.object({ stock: z.number().int().min(0).max(100000) });
 
 export function createApp({ store, jwtSecret, allowedOrigins, secureCookies = false }: AppOptions) {
   const app = express();
@@ -89,6 +91,36 @@ export function createApp({ store, jwtSecret, allowedOrigins, secureCookies = fa
     if (!request.user) return response.status(401).json(errorBody('UNAUTHENTICATED', 'Sign in is required.'));
     response.json({ data: request.user });
   });
+
+  const requireUser = (request: AuthRequest, response: Response, next: NextFunction) => {
+    if (!request.user) return response.status(401).json(errorBody('UNAUTHENTICATED', 'Sign in is required.'));
+    next();
+  };
+  const requireAdmin = (request: AuthRequest, response: Response, next: NextFunction) => {
+    if (!request.user) return response.status(401).json(errorBody('UNAUTHENTICATED', 'Sign in is required.'));
+    if (request.user.role !== 'admin') return response.status(403).json(errorBody('FORBIDDEN', 'Administrator access is required.'));
+    next();
+  };
+
+  app.get('/api/v1/me/orders', authenticate, requireUser, asyncHandler(async (request: AuthRequest, response) => response.json({ data: await store.listOrdersByUser(request.user!.id) })));
+  app.get('/api/v1/me/notifications', authenticate, requireUser, asyncHandler(async (request: AuthRequest, response) => response.json({ data: await store.listNotificationsByUser(request.user!.id) })));
+
+  app.get('/api/v1/admin/overview', authenticate, requireAdmin, asyncHandler(async (_request, response) => response.json({ data: await store.getAdminOverview() })));
+  app.get('/api/v1/admin/users', authenticate, requireAdmin, asyncHandler(async (_request, response) => response.json({ data: await store.listAdminUsers() })));
+  app.get('/api/v1/admin/orders', authenticate, requireAdmin, asyncHandler(async (_request, response) => response.json({ data: await store.listAdminOrders() })));
+  app.get('/api/v1/admin/products', authenticate, requireAdmin, asyncHandler(async (_request, response) => response.json({ data: await store.listProducts() })));
+  app.patch('/api/v1/admin/orders/:id/status', authenticate, requireAdmin, asyncHandler(async (request, response) => {
+    const { status } = orderStatusSchema.parse(request.body) as { status: OrderStatus };
+    const order = await store.updateOrderStatus(String(request.params.id), status);
+    if (!order) return response.status(404).json(errorBody('ORDER_NOT_FOUND', 'Order not found.'));
+    response.json({ data: order });
+  }));
+  app.patch('/api/v1/admin/products/:id/stock', authenticate, requireAdmin, asyncHandler(async (request, response) => {
+    const { stock } = stockSchema.parse(request.body);
+    const product = await store.updateProductStock(String(request.params.id), stock);
+    if (!product) return response.status(404).json(errorBody('PRODUCT_NOT_FOUND', 'Product not found.'));
+    response.json({ data: product });
+  }));
 
   app.use((_request, response) => response.status(404).json(errorBody('NOT_FOUND', 'Route not found.')));
   app.use((error: unknown, _request: Request, response: Response, _next: NextFunction) => {

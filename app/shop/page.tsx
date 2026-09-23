@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, ArrowUpRight, LockKeyhole, ShoppingBag } from 'lucide-react';
+import { ArrowLeft, LockKeyhole } from 'lucide-react';
 import { apiRequest } from '../lib/api';
 
 type Product = { id: string; name: string; priceCents: number; stock: number; imageUrl: string };
@@ -13,7 +13,7 @@ const fallbackProducts: Product[] = [
 ];
 export default function ShopPage() {
   const [products, setProducts] = useState(fallbackProducts);
-  const [message, setMessage] = useState('');
-  useEffect(() => { apiRequest<Product[]>('/api/v1/products').then(result => setProducts(result.data)).catch(() => setMessage('Showing the latest cached catalogue while the club service reconnects.')); }, []);
-  return <main className="section-page"><header className="section-page-nav"><Link href="/" className="brand"><span className="crest">DU</span><span>DURBAN<br />UNITED</span></Link><Link href="/" className="back-link"><ArrowLeft size={15}/> Back to home</Link></header><section className="section-page-hero"><div className="eyebrow">THE UNITED STORE</div><h1>Wear the feeling.</h1><p>Official matchday pieces, training essentials and coastal heritage. Browse live stock; sign in before checkout.</p></section><section className="shop-page-grid">{products.map(product => <article className="shop-page-card" key={product.id}><img src={product.imageUrl} alt={product.name}/><div><span className="stock">{product.stock} in stock</span><h2>{product.name}</h2><strong>{new Intl.NumberFormat('en-ZA', { style: 'currency', currency: 'ZAR', maximumFractionDigits: 0 }).format(product.priceCents / 100)}</strong><button className="primary shop-buy" onClick={() => setMessage(`${product.name} is available. Please log in to buy.`)}><LockKeyhole size={14}/> LOG IN TO BUY</button></div></article>)}</section>{message && <div className="shop-message"><ShoppingBag size={17}/>{message}<Link href="/login">LOGIN / REGISTER <ArrowUpRight size={14}/></Link></div>}</main>;
+  const [catalogueNotice, setCatalogueNotice] = useState('');
+  useEffect(() => { apiRequest<Product[]>('/api/v1/products').then(result => setProducts(result.data)).catch(() => setCatalogueNotice('Showing the latest cached catalogue while the club service reconnects.')); }, []);
+  return <main className="section-page"><header className="section-page-nav"><Link href="/" className="brand"><span className="crest">DU</span><span>DURBAN<br />UNITED</span></Link><Link href="/" className="back-link"><ArrowLeft size={15}/> Back to home</Link></header><section className="section-page-hero"><div className="eyebrow">THE UNITED STORE</div><h1>Wear the feeling.</h1><p>Official matchday pieces, training essentials and coastal heritage. Browse live stock; sign in before checkout.</p>{catalogueNotice && <p role="status">{catalogueNotice}</p>}</section><section className="shop-page-grid">{products.map(product => <article className="shop-page-card" key={product.id}><img src={product.imageUrl} alt={product.name}/><div><span className="stock">{product.stock} in stock</span><h2>{product.name}</h2><strong>{new Intl.NumberFormat('en-ZA', { style: 'currency', currency: 'ZAR', maximumFractionDigits: 0 }).format(product.priceCents / 100)}</strong><Link className="primary shop-buy" href="/login"><LockKeyhole size={14}/> LOG IN TO BUY</Link></div></article>)}</section></main>;
 }

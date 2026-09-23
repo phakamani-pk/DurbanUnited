@@ -1,5 +1,7 @@
 import { MetadataRoute } from 'next';
 
+export const dynamic = 'force-static';
+
 const siteUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://phakamani-pk.github.io/DurbanUnited';
 
 export default function robots(): MetadataRoute.Robots {

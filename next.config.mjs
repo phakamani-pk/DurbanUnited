@@ -6,6 +6,7 @@ const nextConfig = {
   trailingSlash: true,
   basePath: isGitHubPages && repository ? `/${repository}` : '',
   assetPrefix: isGitHubPages && repository ? `/${repository}/` : undefined,
+  env: { NEXT_PUBLIC_BASE_PATH: isGitHubPages && repository ? `/${repository}` : '' },
   images: { unoptimized: true, remotePatterns: [{ protocol: 'https', hostname: 'images.unsplash.com' }] }
 };
 export default nextConfig;

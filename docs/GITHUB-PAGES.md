@@ -1,28 +1,9 @@
-# GitHub Pages deployment
+# GitHub Pages frontend deployment
 
-This project is configured for a static Next.js export and deploys through `.github/workflows/deploy-pages.yml`.
+GitHub Pages remains the frontend host. The workflow builds a static Next.js export under the repository base path and publishes `out/`.
 
-## First deployment
+The working application uses a separate HTTPS backend. Configure the repository Actions variable or environment value `NEXT_PUBLIC_API_URL` with that API origin before building. GitHub Pages cannot run `server/index.ts`, host PostgreSQL or keep `DATABASE_URL`/`JWT_SECRET` private.
 
-Create an empty GitHub repository, then run these commands from this folder in PowerShell:
+For the API, set `ALLOWED_ORIGINS=https://phakamani-pk.github.io`. Production sessions use a secure cross-site httpOnly cookie so the Pages frontend must call the API with credentials included.
 
-```powershell
-git init
-git add .
-git commit -m "Initial Durban United club platform"
-git branch -M main
-git remote add origin https://github.com/YOUR-USERNAME/YOUR-REPOSITORY.git
-git push -u origin main
-```
-
-On GitHub, open **Settings > Pages**, choose **GitHub Actions** as the source, and push to `main`. The workflow publishes to:
-
-```text
-https://YOUR-USERNAME.github.io/YOUR-REPOSITORY/
-```
-
-The workflow passes `GITHUB_REPOSITORY` into Next, so `basePath` and asset URLs are generated for the repository name automatically.
-
-## Static hosting limits
-
-GitHub Pages serves the frontend only. The Express API, PostgreSQL database, authentication, admin persistence, Cloudinary uploads, and Stripe/PayFast webhooks must be deployed separately, for example on Railway. Replace placeholder client interactions with the deployed API URL before production use. Never put database credentials, JWT secrets, payment secrets, or Cloudinary secrets in this repository.
+See `docs/DELIVERY-ARCHITECTURE.md` for roles, routing and backend release variables.
