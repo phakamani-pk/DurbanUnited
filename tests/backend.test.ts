@@ -107,3 +107,26 @@ test('memory preview admin changes persist only in the current store instance', 
   assert.equal((await first.listAdminResource('sponsors')).length, 0);
   assert.equal(await first.deleteAdminResource('sponsors', created.id), false);
 });
+
+test('deactivated accounts lose sessions and can be reactivated without duplicate registration', async () => {
+  const adminLogin = await fetch(`${baseUrl}/api/v1/auth/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: 'admin@example.com', password: 'admin-password' }) });
+  const adminCookie = adminLogin.headers.get('set-cookie')!.split(';')[0];
+  const fanLogin = await fetch(`${baseUrl}/api/v1/auth/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: 'fan@example.com', password: 'strong-password' }) });
+  const fanCookie = fanLogin.headers.get('set-cookie')!.split(';')[0];
+  const fanId = (await fanLogin.json()).data.id;
+  const accessUrl = `${baseUrl}/api/v1/admin/users/${fanId}/access`;
+  const changeAccess = (isActive: boolean) => fetch(accessUrl, { method: 'PATCH', headers: { cookie: adminCookie, 'content-type': 'application/json' }, body: JSON.stringify({ role: 'fan', isActive }) });
+  const disabled = await changeAccess(false);
+  assert.equal(disabled.status, 200);
+  const activeUsers = await fetch(`${baseUrl}/api/v1/admin/users`, { headers: { cookie: adminCookie } }).then(response => response.json());
+  assert.ok(!activeUsers.data.some((user: { id: string }) => user.id === fanId));
+  const overview = await fetch(`${baseUrl}/api/v1/admin/overview`, { headers: { cookie: adminCookie } }).then(response => response.json());
+  assert.equal(overview.data.userCount, 1);
+  assert.equal((await fetch(`${baseUrl}/api/v1/auth/me`, { headers: { cookie: fanCookie } })).status, 401);
+  const loginWhileDisabled = await fetch(`${baseUrl}/api/v1/auth/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: 'fan@example.com', password: 'strong-password' }) });
+  assert.equal(loginWhileDisabled.status, 401);
+  const duplicate = await fetch(`${baseUrl}/api/v1/auth/register`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: 'fan@example.com', password: 'new-password', firstName: 'Second', lastName: 'Account' }) });
+  assert.equal(duplicate.status, 409);
+  assert.equal((await changeAccess(true)).status, 200);
+  assert.equal((await fetch(`${baseUrl}/api/v1/auth/me`, { headers: { cookie: fanCookie } })).status, 200);
+});

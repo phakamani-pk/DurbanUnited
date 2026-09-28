@@ -52,6 +52,7 @@ const news: NewsItem[] = [
 
 export class MemoryStore implements Store {
   private users = new Map<string, StoredUser>();
+  private inactiveUserIds = new Set<string>();
   // Keep all preview data on this store instance, never in shared module-level arrays.
   private products = products.map(item => ({ ...item }));
   private players = players.map(item => ({ ...item }));
@@ -64,10 +65,10 @@ export class MemoryStore implements Store {
 
   constructor(seedUsers: StoredUser[] = []) { for (const user of seedUsers) this.users.set(user.id, user); }
 
-  async findUserByEmail(email: string) { return Array.from(this.users.values()).find(user => user.email === email.toLowerCase()) ?? null; }
-  async findUserById(id: string) { return this.users.get(id) ?? null; }
+  async findUserByEmail(email: string) { return Array.from(this.users.values()).find(user => user.email === email.toLowerCase() && !this.inactiveUserIds.has(user.id)) ?? null; }
+  async findUserById(id: string) { return this.inactiveUserIds.has(id) ? null : this.users.get(id) ?? null; }
   async createUser(input: Omit<StoredUser, 'id' | 'role'>) {
-    if (await this.findUserByEmail(input.email)) throw new Error('EMAIL_EXISTS');
+    if (Array.from(this.users.values()).some(user => user.email === input.email.toLowerCase())) throw new Error('EMAIL_EXISTS');
     const user: StoredUser = { ...input, email: input.email.toLowerCase(), id: randomUUID(), role: 'fan' };
     this.users.set(user.id, user);
     return user;
@@ -79,9 +80,9 @@ export class MemoryStore implements Store {
   async listOrdersByUser(userId: string) { return this.orders.filter(order => order.id.startsWith(`${userId}:`)); }
   async listNotificationsByUser(userId: string) { return this.notifications.get(userId) ?? []; }
   async getAdminOverview() {
-    return { userCount: this.users.size, orderCount: this.orders.length, pendingOrderCount: this.orders.filter(order => order.status === 'pending').length, productCount: this.products.length, lowStockCount: this.products.filter(product => product.stock < 10).length, grossMerchandiseValueCents: this.orders.filter(order => !['pending', 'cancelled'].includes(order.status)).reduce((sum, order) => sum + order.totalCents, 0) };
+    return { userCount: this.users.size - this.inactiveUserIds.size, orderCount: this.orders.length, pendingOrderCount: this.orders.filter(order => order.status === 'pending').length, productCount: this.products.length, lowStockCount: this.products.filter(product => product.stock < 10).length, grossMerchandiseValueCents: this.orders.filter(order => !['pending', 'cancelled'].includes(order.status)).reduce((sum, order) => sum + order.totalCents, 0) };
   }
-  async listAdminUsers() { return Array.from(this.users.values()).map(({ passwordHash: _passwordHash, ...user }) => user); }
+  async listAdminUsers() { return Array.from(this.users.values()).filter(user => !this.inactiveUserIds.has(user.id)).map(({ passwordHash: _passwordHash, ...user }) => user); }
   async listAdminOrders() { return this.orders; }
   async updateOrderStatus(id: string, status: OrderStatus) { const order = this.orders.find(item => item.id === id); if (!order) return null; order.status = status; return order; }
   async updateProductStock(id: string, stock: number) { const product = this.products.find(item => item.id === id); if (!product) return null; product.stock = stock; return product; }
@@ -113,9 +114,9 @@ export class MemoryStore implements Store {
     rows.splice(index, 1);
     return true;
   }
-  async updateUserAccess(id: string, role: 'fan' | 'admin', isActive: boolean) { const user = this.users.get(id); if (!user || !isActive) return null; user.role = role; const { passwordHash: _passwordHash, ...publicRecord } = user; return publicRecord; }
+  async updateUserAccess(id: string, role: 'fan' | 'admin', isActive: boolean) { const user = this.users.get(id); if (!user) return null; user.role = role; if (isActive) this.inactiveUserIds.delete(id); else this.inactiveUserIds.add(id); const { passwordHash: _passwordHash, ...publicRecord } = user; return publicRecord; }
   async createNotification(userId: string, title: string, body: string) { const item = { id: randomUUID(), title, body, readAt: null, createdAt: new Date().toISOString() }; this.notifications.set(userId, [item, ...(this.notifications.get(userId) ?? [])]); return item; }
-  async ensureAdmin(email: string, passwordHash: string, firstName: string, lastName: string) { const existing = await this.findUserByEmail(email); if (existing) { existing.role = 'admin'; existing.passwordHash = passwordHash; return; } const user: StoredUser = { id: randomUUID(), email: email.toLowerCase(), passwordHash, firstName, lastName, role: 'admin' }; this.users.set(user.id, user); }
+  async ensureAdmin(email: string, passwordHash: string, firstName: string, lastName: string) { const existing = Array.from(this.users.values()).find(user => user.email === email.toLowerCase()); if (existing) { existing.role = 'admin'; existing.passwordHash = passwordHash; existing.firstName = firstName; existing.lastName = lastName; this.inactiveUserIds.delete(existing.id); return; } const user: StoredUser = { id: randomUUID(), email: email.toLowerCase(), passwordHash, firstName, lastName, role: 'admin' }; this.users.set(user.id, user); }
   async subscribe(email: string) {
     const normalized = email.toLowerCase();
     const existing = this.subscriptions.get(normalized);
