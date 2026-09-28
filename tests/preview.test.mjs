@@ -44,3 +44,15 @@ test('mobile menu contains focus, supports Escape and hides background content',
   assert.match(home, /inert=\{menuOpen/);
   assert.match(home, /last\.focus\(\)/);
 });
+
+test('local preview uses temporary memory data and never forwards database or admin secrets', async () => {
+  const script = await readFile('scripts/dev-local.mjs', 'utf8');
+  assert.match(script, /DATA_MODE: 'memory'/);
+  assert.match(script, /randomBytes\(32\)/);
+  assert.match(script, /DATABASE_URL: ''/);
+  assert.match(script, /ADMIN_PASSWORD: ''/);
+  assert.match(script, /NEXT_PUBLIC_API_URL: apiOrigin/);
+  const { spawnSync } = await import('node:child_process');
+  const invalid = spawnSync(process.execPath, ['scripts/dev-local.mjs'], { env: { ...process.env, LOCAL_API_PORT: '3000', LOCAL_WEB_PORT: '3000' }, encoding: 'utf8' });
+  assert.notEqual(invalid.status, 0);
+});
