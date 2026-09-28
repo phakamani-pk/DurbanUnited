@@ -2,15 +2,9 @@
 
 A production-shaped Next.js foundation for the Durban United public site, fan portal, store, content operations, and analytics surfaces.
 
-## Run locally
+## Preview and test locally
 
-1. Install Node.js 20+.
-2. Run `npm install`.
-3. Copy `.env.example` to `.env.local` and provide secrets.
-4. Create a PostgreSQL database and run `psql "$env:DATABASE_URL" -f db/schema.sql`.
-5. Run `npm run dev` and open `http://localhost:3000`.
-
-The current slice includes the responsive public experience plus a TypeScript Express backend with PostgreSQL persistence, supporter registration and login, public fixture/product/player/news feeds, and contact-update subscriptions. See `docs/BACKEND.md` for setup.
+With Node.js 20+ installed, run `npm ci` and then `npm run dev:local`. Open `http://127.0.0.1:3000` on the **same computer**. The command starts the frontend and API on loopback only, prints fresh temporary demo-admin credentials in your terminal, and uses sample data held in memory. It does not connect to the existing hosted database or publish a live preview. You can register a fan account, test the profile, and sign in with the generated demo-admin credentials to test management. See [local testing](docs/LOCAL-DEVELOPMENT.md) for the walkthrough and limitations.
 
 ## Delivery architecture
 

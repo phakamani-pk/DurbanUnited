@@ -52,6 +52,12 @@ const news: NewsItem[] = [
 
 export class MemoryStore implements Store {
   private users = new Map<string, StoredUser>();
+  // Keep all preview data on this store instance, never in shared module-level arrays.
+  private products = products.map(item => ({ ...item }));
+  private players = players.map(item => ({ ...item }));
+  private news = news.map(item => ({ ...item }));
+  private fixtures = fixtures.map(item => ({ ...item }));
+  private extraResources = new Map<AdminResource, AdminRecord[]>();
   private orders: OrderSummary[] = [];
   private notifications = new Map<string, Notification[]>();
   private subscriptions = new Map<string, ContactSubscription>();
@@ -66,29 +72,47 @@ export class MemoryStore implements Store {
     this.users.set(user.id, user);
     return user;
   }
-  async listFixtures() { return fixtures; }
-  async listProducts() { return products; }
-  async listPlayers() { return players; }
-  async listNews() { return news; }
+  async listFixtures() { return this.fixtures; }
+  async listProducts() { return this.products; }
+  async listPlayers() { return this.players; }
+  async listNews() { return this.news; }
   async listOrdersByUser(userId: string) { return this.orders.filter(order => order.id.startsWith(`${userId}:`)); }
   async listNotificationsByUser(userId: string) { return this.notifications.get(userId) ?? []; }
   async getAdminOverview() {
-    return { userCount: this.users.size, orderCount: this.orders.length, pendingOrderCount: this.orders.filter(order => order.status === 'pending').length, productCount: products.length, lowStockCount: products.filter(product => product.stock < 10).length, grossMerchandiseValueCents: this.orders.filter(order => !['pending', 'cancelled'].includes(order.status)).reduce((sum, order) => sum + order.totalCents, 0) };
+    return { userCount: this.users.size, orderCount: this.orders.length, pendingOrderCount: this.orders.filter(order => order.status === 'pending').length, productCount: this.products.length, lowStockCount: this.products.filter(product => product.stock < 10).length, grossMerchandiseValueCents: this.orders.filter(order => !['pending', 'cancelled'].includes(order.status)).reduce((sum, order) => sum + order.totalCents, 0) };
   }
   async listAdminUsers() { return Array.from(this.users.values()).map(({ passwordHash: _passwordHash, ...user }) => user); }
   async listAdminOrders() { return this.orders; }
   async updateOrderStatus(id: string, status: OrderStatus) { const order = this.orders.find(item => item.id === id); if (!order) return null; order.status = status; return order; }
-  async updateProductStock(id: string, stock: number) { const product = products.find(item => item.id === id); if (!product) return null; product.stock = stock; return product; }
-  async listAdminResource(resource: AdminResource) {
-    if (resource === 'players') return players as unknown as AdminRecord[];
-    if (resource === 'news') return news as unknown as AdminRecord[];
-    if (resource === 'fixtures') return fixtures as unknown as AdminRecord[];
-    if (resource === 'products') return products as unknown as AdminRecord[];
-    return [];
+  async updateProductStock(id: string, stock: number) { const product = this.products.find(item => item.id === id); if (!product) return null; product.stock = stock; return product; }
+  private resourceRows(resource: AdminResource): AdminRecord[] {
+    if (resource === 'players') return this.players as unknown as AdminRecord[];
+    if (resource === 'news') return this.news as unknown as AdminRecord[];
+    if (resource === 'fixtures') return this.fixtures as unknown as AdminRecord[];
+    if (resource === 'products') return this.products as unknown as AdminRecord[];
+    if (!this.extraResources.has(resource)) this.extraResources.set(resource, []);
+    return this.extraResources.get(resource)!;
   }
-  async createAdminResource(_resource: AdminResource, input: Record<string, unknown>) { return { id: randomUUID(), ...input } as AdminRecord; }
-  async updateAdminResource(_resource: AdminResource, id: string, input: Record<string, unknown>) { return { id, ...input } as AdminRecord; }
-  async deleteAdminResource() { return true; }
+  async listAdminResource(resource: AdminResource) { return this.resourceRows(resource).map(row => ({ ...row })); }
+  async createAdminResource(resource: AdminResource, input: Record<string, unknown>, _actorId: string) {
+    const record = { id: randomUUID(), ...input } as AdminRecord;
+    this.resourceRows(resource).unshift(record);
+    return { ...record };
+  }
+  async updateAdminResource(resource: AdminResource, id: string, input: Record<string, unknown>, _actorId: string) {
+    const rows = this.resourceRows(resource);
+    const index = rows.findIndex(row => row.id === id);
+    if (index < 0) return null;
+    rows[index] = { ...rows[index], ...input, id } as AdminRecord;
+    return { ...rows[index] };
+  }
+  async deleteAdminResource(resource: AdminResource, id: string) {
+    const rows = this.resourceRows(resource);
+    const index = rows.findIndex(row => row.id === id);
+    if (index < 0) return false;
+    rows.splice(index, 1);
+    return true;
+  }
   async updateUserAccess(id: string, role: 'fan' | 'admin', isActive: boolean) { const user = this.users.get(id); if (!user || !isActive) return null; user.role = role; const { passwordHash: _passwordHash, ...publicRecord } = user; return publicRecord; }
   async createNotification(userId: string, title: string, body: string) { const item = { id: randomUUID(), title, body, readAt: null, createdAt: new Date().toISOString() }; this.notifications.set(userId, [item, ...(this.notifications.get(userId) ?? [])]); return item; }
   async ensureAdmin(email: string, passwordHash: string, firstName: string, lastName: string) { const existing = await this.findUserByEmail(email); if (existing) { existing.role = 'admin'; existing.passwordHash = passwordHash; return; } const user: StoredUser = { id: randomUUID(), email: email.toLowerCase(), passwordHash, firstName, lastName, role: 'admin' }; this.users.set(user.id, user); }

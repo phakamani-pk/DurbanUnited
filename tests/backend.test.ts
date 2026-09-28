@@ -87,3 +87,23 @@ test('admin can manage every configured content resource', async () => {
   assert.equal(create.status, 201);
   assert.equal((await create.json()).data.name, 'Test Sponsor');
 });
+
+
+test('memory preview admin changes persist only in the current store instance', async () => {
+  const first = new MemoryStore();
+  const second = new MemoryStore();
+  const stockId = (await first.listProducts())[0].id;
+  await first.updateProductStock(stockId, 7);
+  assert.equal((await first.listProducts())[0].stock, 7);
+  assert.equal((await second.listProducts())[0].stock, 18);
+
+  const created = await first.createAdminResource('sponsors', { name: 'Test sponsor' }, 'admin-1');
+  assert.equal((await first.listAdminResource('sponsors'))[0].id, created.id);
+  assert.equal((await second.listAdminResource('sponsors')).length, 0);
+  const updated = await first.updateAdminResource('sponsors', created.id, { name: 'Updated sponsor' }, 'admin-1');
+  assert.equal(updated?.name, 'Updated sponsor');
+  assert.equal((await first.listAdminResource('sponsors'))[0].name, 'Updated sponsor');
+  assert.equal(await first.deleteAdminResource('sponsors', created.id), true);
+  assert.equal((await first.listAdminResource('sponsors')).length, 0);
+  assert.equal(await first.deleteAdminResource('sponsors', created.id), false);
+});

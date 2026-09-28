@@ -56,3 +56,19 @@ test('Pages deploy rejects a missing or invalid API origin before building', asy
   const valid = spawnSync(process.execPath, ['scripts/check-pages-api-url.mjs'], { env: { ...process.env, NEXT_PUBLIC_API_URL: 'https://api.example.com' }, encoding: 'utf8' });
   assert.equal(valid.status, 0, valid.stderr);
 });
+
+
+test('main-based local preview stays on loopback with temporary memory data and keeps Pages guard', async () => {
+  const script = await readFile('scripts/dev-local.mjs', 'utf8');
+  const workflow = await readFile('.github/workflows/deploy-pages.yml', 'utf8');
+  assert.match(script, /DATA_MODE: 'memory'/);
+  assert.match(script, /DATABASE_URL: ''/);
+  assert.match(script, /HOST: '127\.0\.0\.1'/);
+  assert.match(script, /--hostname', '127\.0\.0\.1'/);
+  assert.match(script, /demoPassword = randomBytes\(24\)/);
+  assert.match(script, /NEXT_PUBLIC_API_URL: apiOrigin/);
+  assert.match(workflow, /Validate API origin[\s\S]*?node scripts\/check-pages-api-url\.mjs[\s\S]*?Build static site/);
+  const { spawnSync } = await import('node:child_process');
+  const invalid = spawnSync(process.execPath, ['scripts/dev-local.mjs'], { env: { ...process.env, LOCAL_API_PORT: '3000', LOCAL_WEB_PORT: '3000' }, encoding: 'utf8' });
+  assert.notEqual(invalid.status, 0);
+});
