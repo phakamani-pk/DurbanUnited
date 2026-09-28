@@ -44,3 +44,15 @@ test('mobile menu contains focus, supports Escape and hides background content',
   assert.match(home, /inert=\{menuOpen/);
   assert.match(home, /last\.focus\(\)/);
 });
+
+test('Pages deploy rejects a missing or invalid API origin before building', async () => {
+  const { spawnSync } = await import('node:child_process');
+  const workflow = await readFile('.github/workflows/deploy-pages.yml', 'utf8');
+  assert.match(workflow, /Validate API origin[\s\S]*?node scripts\/check-pages-api-url\.mjs[\s\S]*?Build static site/);
+  for (const value of ['', 'http://api.example.com', 'https://api.example.com/', 'https://api.example.com/path', 'https://localhost:4000']) {
+    const run = spawnSync(process.execPath, ['scripts/check-pages-api-url.mjs'], { env: { ...process.env, NEXT_PUBLIC_API_URL: value }, encoding: 'utf8' });
+    assert.notEqual(run.status, 0, `Unexpectedly accepted ${JSON.stringify(value)}`);
+  }
+  const valid = spawnSync(process.execPath, ['scripts/check-pages-api-url.mjs'], { env: { ...process.env, NEXT_PUBLIC_API_URL: 'https://api.example.com' }, encoding: 'utf8' });
+  assert.equal(valid.status, 0, valid.stderr);
+});
