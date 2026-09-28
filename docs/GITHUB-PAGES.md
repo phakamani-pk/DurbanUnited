@@ -7,3 +7,5 @@ The working application uses a separate HTTPS backend. Configure the repository 
 For the API, set `ALLOWED_ORIGINS=https://phakamani-pk.github.io`. Production sessions use a secure cross-site httpOnly cookie so the Pages frontend must call the API with credentials included.
 
 See `docs/DELIVERY-ARCHITECTURE.md` for roles, routing and backend release variables.
+
+The Pages workflow validates `NEXT_PUBLIC_API_URL` before the static build. It must be the API's public HTTPS origin without a trailing slash (for example, `https://api.example.com`); if it is missing or invalid, the workflow stops instead of publishing a frontend whose login cannot reach the backend. Only set it after the API health, database, and CORS checks pass.
